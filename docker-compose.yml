@@ -11,6 +11,8 @@ services:
       - PORT=${PORT:-8001}
     depends_on:
       - postgres
+    ports:
+      - "${PORT:-8001}:${PORT:-8001}"  # Expose to host's localhost
     labels:
       - coolify.managed=true
       - traefik.enable=true

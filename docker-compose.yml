@@ -9,25 +9,8 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - NODE_ENV=production
       - PORT=${PORT:-8001}
-    depends_on:
-      - postgres
     ports:
       - "${PORT:-8001}:${PORT:-8001}"  # Expose to host's localhost
     labels:
       - coolify.managed=true
       - traefik.enable=true
-
-  postgres:
-    image: postgres:15-alpine
-    container_name: bittasker-nostr-relay-nestjs
-    environment:
-      POSTGRES_USER: bittasker
-      POSTGRES_PASSWORD: bittasker
-      POSTGRES_DB: bittasker
-      PGDATA: /var/lib/postgresql/data/pgdata
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    restart: unless-stopped
-
-volumes:
-  postgres-data:

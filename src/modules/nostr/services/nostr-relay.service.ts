@@ -20,7 +20,7 @@ import { WotService } from '../../../modules/wot/wot.service';
 import { MetricService } from '../../metric/metric.service';
 import { EventRepository } from '../../repositories/event.repository';
 import { NostrRelayLogger } from '../../share/nostr-relay-logger.service';
-import { BlacklistGuardPlugin, WhitelistGuardPlugin } from '../plugins';
+import { BlacklistGuardPlugin, WhitelistGuardPlugin, EventDeletionPlugin } from '../plugins';
 
 @Injectable()
 export class NostrRelayService implements OnApplicationShutdown {
@@ -37,6 +37,7 @@ export class NostrRelayService implements OnApplicationShutdown {
     eventRepository: EventRepository,
     configService: ConfigService<Config, true>,
     wotService: WotService,
+    private readonly eventDeletionPlugin: EventDeletionPlugin,
   ) {
     const hostname = configService.get('hostname');
     const {
@@ -81,6 +82,9 @@ export class NostrRelayService implements OnApplicationShutdown {
       const whitelistGuardPlugin = new WhitelistGuardPlugin(whitelist);
       orGuardPlugin.addGuard(whitelistGuardPlugin);
     }
+
+    // Register event deletion plugin
+    this.relay.register(this.eventDeletionPlugin);
 
     this.relay.register(orGuardPlugin);
     this.relay.register(createdAtLimitGuardPlugin);

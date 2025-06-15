@@ -3,6 +3,7 @@ import { EventSearchRepository } from './event-search.repository';
 import { EventRepository } from './event.repository';
 import { KyselyDb } from './kysely-db';
 import { Nip05Repository } from './nip-05.repository';
+import { EventDeletionPlugin } from '../nostr/plugins/event-deletion.plugin';
 
 @Module({
   providers: [
@@ -10,6 +11,7 @@ import { Nip05Repository } from './nip-05.repository';
     EventRepository,
     EventSearchRepository,
     Nip05Repository,
+    EventDeletionPlugin,
   ],
   exports: [EventRepository, EventSearchRepository, Nip05Repository],
 })

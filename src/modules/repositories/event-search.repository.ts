@@ -164,6 +164,19 @@ export class EventSearchRepository implements OnApplicationBootstrap {
     }
   }
 
+  /**
+   * Delete a specific event from the search index by its ID.
+   */
+  async deleteByEventId(eventId: string) {
+    if (!this.index) return;
+
+    try {
+      await this.index.deleteDocument(eventId);
+    } catch (error) {
+      this.logger.error(error);
+    }
+  }
+
   private buildSearchFilter(filter: Filter): string {
     const filterQuery: FilterQuery<EventFilterableAttributes> = {
       $or: [

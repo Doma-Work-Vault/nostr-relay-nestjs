@@ -60,6 +60,47 @@ The search engine uses a single index named 'events' with the following attribut
    - Deletes multiple events specified in the 'e' tags
    - Only deletes events if the deletion request comes from the original author
 
+### Replaceable Events Handling
+
+The system provides special handling for replaceable events (as defined in NIP-01), which include:
+- Events with kinds between 10000-20000
+- Events with kinds between 30000-40000 (addressable replaceable events)
+- Events with kind 0 or 3
+
+1. **Index Structure**
+   - The unique index `e_author_kind_d_tag_value_idx` ensures only one event exists per (author, kind, d_tag_value) combination
+   - For addressable replaceable events (30000-40000), the d_tag value uniquely identifies the replaceable event
+   - For regular replaceable events (10000-20000), an empty d_tag value is used
+
+2. **Update Process**
+   When a new replaceable event is received:
+   - The system extracts the d_tag value from the event
+   - The `EventRepository.upsert` method handles the replacement logic
+   - Before inserting the new event, existing events with the same (author, kind, d_tag_value) are deleted from the search index
+   - The new event is then added to both the database and search index
+   - The unique database constraint ensures atomic updates
+
+3. **Search Index Consistency**
+   - The `deleteReplaceableEvents` method in `EventSearchRepository` ensures old versions are removed from the search index
+   - This maintains consistency between the database and search index for replaceable events
+   - The deletion is performed using a filter on author, kind, and dTagValue fields
+
+4. **Example Flow**
+   For a kind 31000 event update:
+   ```
+   a. New event received with:
+      - kind: 31000
+      - author: pubkey123
+      - d_tag: "my-identifier"
+   
+   b. System process:
+      1. Extracts d_tag value "my-identifier"
+      2. Calls deleteReplaceableEvents(pubkey123, 31000, "my-identifier")
+      3. Removes old version from search index
+      4. Inserts new event in database (replacing old version due to unique constraint)
+      5. Adds new event to search index
+   ```
+
 ### Search Implementation
 
 1. **Basic Search**

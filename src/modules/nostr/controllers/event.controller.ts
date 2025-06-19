@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpStatus,
   NotFoundException,
@@ -9,7 +10,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiResponse, ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
 import { Pubkey } from '../../../common/decorators';
 import { ErrorVo } from '../../../common/vos';
 import { FindEventsDto, HandleEventDto, RequestEventsDto } from '../dtos';
@@ -17,11 +18,17 @@ import { EventEntity, FilterEntity } from '../entities';
 import { EventIdSchema } from '../schemas';
 import { NostrRelayService } from '../services/nostr-relay.service';
 import { FindEventByIdVo, FindEventsVo, RequestEventsVo } from '../vos';
+import { EventRepository } from '../../repositories/event.repository';
+import { EventDeletionPlugin } from '../plugins/event-deletion.plugin';
 
 @Controller('api/v1/events')
 @ApiTags('events')
 export class EventController {
-  constructor(private readonly nostrRelayService: NostrRelayService) {}
+  constructor(
+    private readonly nostrRelayService: NostrRelayService,
+    private readonly eventRepository: EventRepository,
+    private readonly eventDeletionPlugin: EventDeletionPlugin,
+  ) {}
 
   /**
    * Handle a new event.
@@ -144,6 +151,126 @@ export class EventController {
       .findEvents(filters, pubkey)
       .catch(() => []);
     return { data: events };
+  }
+
+  /**
+   * Delete events using a NIP-09 deletion event (kind 5).
+   */
+  @Delete()
+  @ApiOperation({
+    summary: 'Delete events using NIP-09',
+    description: 'Delete events by submitting a signed NIP-09 deletion event (kind 5). The event must be properly signed by the original author.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['id', 'pubkey', 'created_at', 'kind', 'tags', 'content', 'sig'],
+      properties: {
+        id: {
+          type: 'string',
+          description: 'Event ID (32-bytes hex)',
+          example: '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f'
+        },
+        pubkey: {
+          type: 'string',
+          description: 'Public key of the event creator (32-bytes hex)',
+          example: '32-character-hex-string-public-key00'
+        },
+        created_at: {
+          type: 'number',
+          description: 'Unix timestamp in seconds',
+          example: 1617848625
+        },
+        kind: {
+          type: 'number',
+          description: 'Must be 5 for deletion events (NIP-09)',
+          example: 5
+        },
+        tags: {
+          type: 'array',
+          description: 'Array of tags. Must include "e" tags for events to delete',
+          items: {
+            type: 'array',
+            items: {
+              type: 'string'
+            }
+          },
+          example: [
+            ['e', '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f'],
+            ['e', '1f1e1d1c1b1a191817161514131211100f0e0d0c0b0a09080706050403020100']
+          ]
+        },
+        content: {
+          type: 'string',
+          description: 'Content of the event. Can be empty for deletion events.',
+          example: ''
+        },
+        sig: {
+          type: 'string',
+          description: 'Event signature (64-bytes hex)',
+          example: '64-bytes-hex-signature'
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Events deleted successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        deletedCount: { 
+          type: 'number',
+          description: 'Number of events that were successfully deleted',
+          example: 2
+        },
+        message: { 
+          type: 'string',
+          description: 'Status message describing the result of the operation',
+          example: 'Successfully deleted 2 event(s)'
+        }
+      }
+    }
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid event format, signature verification failed, or invalid event IDs',
+    type: ErrorVo,
+  })
+  async deleteEvents(@Body() event: HandleEventDto): Promise<{ deletedCount: number; message: string }> {
+    try {
+      // Validate the deletion event
+      const validatedEvent = await this.nostrRelayService.validateEvent(event);
+      
+      // Ensure it's a deletion event
+      if (validatedEvent.kind !== 5) {
+        throw new BadRequestException('Event must be kind 5 (deletion event)');
+      }
+
+      // Extract event IDs to delete from 'e' tags
+      const eventIdsToDelete = this.eventDeletionPlugin.extractEventIdsFromTags(validatedEvent.tags);
+      
+      if (eventIdsToDelete.length === 0) {
+        throw new BadRequestException('Deletion event must contain at least one valid "e" tag');
+      }
+
+      // Delete the events
+      const deletedCount = await this.eventRepository.deleteEventsByIds(
+        eventIdsToDelete,
+        validatedEvent.pubkey
+      );
+
+      const message = deletedCount > 0 
+        ? `Successfully deleted ${deletedCount} event(s)`
+        : 'No events were deleted. Events may not exist or you may not have permission to delete them.';
+
+      return {
+        deletedCount,
+        message
+      };
+    } catch (error) {
+      throw new BadRequestException(`Failed to process deletion event: ${error.message}`);
+    }
   }
 
   private preprocessFindEventsDto(findEventsDto: FindEventsDto) {

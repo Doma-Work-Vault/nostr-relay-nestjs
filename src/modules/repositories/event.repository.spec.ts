@@ -9,6 +9,7 @@ import { EventSearchRepository } from './event-search.repository';
 import { EventRepository } from './event.repository';
 import { KyselyDb } from './kysely-db';
 import { Database } from './types';
+import { EventDeletionPlugin } from '../nostr/plugins/event-deletion.plugin';
 
 describe('EventRepository', () => {
   let db: Kysely<Database>;
@@ -25,6 +26,9 @@ describe('EventRepository', () => {
         }),
       ),
       createMock<EventSearchRepository>(),
+      createMock<EventDeletionPlugin>({
+        extractEventIdsFromTags: jest.fn().mockReturnValue([]),
+      }),
     );
     db = eventRepository['db'];
   });
@@ -491,6 +495,98 @@ describe('EventRepository', () => {
       const result = await eventRepository.deleteExpiredEvents();
 
       expect(result).toBe(1);
+    });
+  });
+
+  describe('deleteEventsByIds', () => {
+    const authorPubkey = 'a09659cd9ee89cd3743bc29aa67edf1d7d12fb624699fcd3d6d33eef250b01e7';
+    const otherPubkey = 'b09659cd9ee89cd3743bc29aa67edf1d7d12fb624699fcd3d6d33eef250b01e8';
+
+    beforeEach(async () => {
+      // Create events from different authors manually
+      const authorEvent = {
+        id: '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+        pubkey: authorPubkey,
+        kind: 1,
+        content: 'event by author',
+        created_at: getTimestampInSeconds(),
+        tags: [],
+        sig: 'test-sig-1',
+      };
+      
+      const otherEvent = {
+        id: 'fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321',
+        pubkey: otherPubkey,
+        kind: 1,
+        content: 'event by other',
+        created_at: getTimestampInSeconds(),
+        tags: [],
+        sig: 'test-sig-2',
+      };
+      
+      await eventRepository.upsert(authorEvent);
+      await eventRepository.upsert(otherEvent);
+    });
+
+    it('should delete events only by the specified author', async () => {
+      // Get all events first
+      const allEvents = await eventRepository.find({});
+      expect(allEvents).toHaveLength(2);
+
+      const authorEvents = allEvents.filter(e => e.pubkey === authorPubkey);
+      const otherEvents = allEvents.filter(e => e.pubkey === otherPubkey);
+      
+      // Try to delete all events but specify only the author's pubkey
+      const deletedCount = await eventRepository.deleteEventsByIds(
+        allEvents.map(e => e.id),
+        authorPubkey
+      );
+
+      expect(deletedCount).toBe(1); // Only author's event should be deleted
+
+      // Verify only the author's event was deleted
+      const remainingEvents = await eventRepository.find({});
+      expect(remainingEvents).toHaveLength(1);
+      expect(remainingEvents[0].pubkey).toBe(otherPubkey);
+    });
+
+    it('should return 0 when no events match the author', async () => {
+      const allEvents = await eventRepository.find({});
+      const unknownAuthor = 'c09659cd9ee89cd3743bc29aa67edf1d7d12fb624699fcd3d6d33eef250b01e9';
+      
+      const deletedCount = await eventRepository.deleteEventsByIds(
+        allEvents.map(e => e.id),
+        unknownAuthor
+      );
+
+      expect(deletedCount).toBe(0);
+      
+      // Verify no events were deleted
+      const remainingEvents = await eventRepository.find({});
+      expect(remainingEvents).toHaveLength(2);
+    });
+
+    it('should return 0 when event IDs array is empty', async () => {
+      const deletedCount = await eventRepository.deleteEventsByIds(
+        [],
+        authorPubkey
+      );
+
+      expect(deletedCount).toBe(0);
+    });
+
+    it('should handle non-existent event IDs gracefully', async () => {
+      const nonExistentIds = [
+        '1111111111111111111111111111111111111111111111111111111111111111',
+        '2222222222222222222222222222222222222222222222222222222222222222',
+      ];
+      
+      const deletedCount = await eventRepository.deleteEventsByIds(
+        nonExistentIds,
+        authorPubkey
+      );
+
+      expect(deletedCount).toBe(0);
     });
   });
 });

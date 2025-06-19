@@ -23,7 +23,7 @@ If you'd like to help me test the reliability of this relay implementation, you 
 | [NIP-02: Follow List](https://github.com/nostr-protocol/nips/blob/master/02.md)                                          |   🟢   |                                          |
 | [NIP-04: Encrypted Direct Message](https://github.com/nostr-protocol/nips/blob/master/04.md)                             |   🟢   |                                          |
 | [NIP-05: Mapping Nostr keys to DNS-based internet identifiers](https://github.com/nostr-protocol/nips/blob/master/05.md) |   🟢   |                                          |
-| [NIP-09: Event Deletion](https://github.com/nostr-protocol/nips/blob/master/09.md)                                       |   🔴   | No real deletion in a distributed system |
+| [NIP-09: Event Deletion](https://github.com/nostr-protocol/nips/blob/master/09.md)                                       |   🟢   |                                          |
 | [NIP-11: Relay Information Document](https://github.com/nostr-protocol/nips/blob/master/11.md)                           |   🟢   |                                          |
 | [NIP-13: Proof of Work](https://github.com/nostr-protocol/nips/blob/master/13.md)                                        |   🟢   |                                          |
 | [NIP-22: Event created_at Limits](https://github.com/nostr-protocol/nips/blob/master/22.md)                              |   🟢   |                                          |
@@ -187,3 +187,54 @@ If you like this project, you can buy me a coffee :) ⚡️ codytseng@getalby.co
 This project is MIT licensed.
 
 [![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FCodyTseng%2Fnostr-relay-nestjs.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2FCodyTseng%2Fnostr-relay-nestjs?ref=badge_large)
+
+## ⚡ **Event Deletion (NIP-09)**
+
+This relay implements [NIP-09 Event Deletion](https://github.com/nostr-protocol/nips/blob/master/09.md), allowing users to request deletion of their own events.
+
+### How it works
+
+1. **Deletion Events**: Send an event with `kind: 5` containing `e` tags that reference the event IDs you want to delete
+2. **Authorization**: Only the original author of an event can delete it (pubkey verification)
+3. **Real Deletion**: Unlike some relays that only hide events, this implementation actually removes events from the database
+4. **REST API**: Also provides a REST endpoint for deletion via HTTP
+
+### Usage Examples
+
+#### Via Nostr Protocol (Deletion Event)
+```json
+{
+  "kind": 5,
+  "pubkey": "your-pubkey-here",
+  "tags": [
+    ["e", "event-id-to-delete-1"],
+    ["e", "event-id-to-delete-2"]
+  ],
+  "content": "Deleting these events",
+  "created_at": 1640995200,
+  "id": "deletion-event-id",
+  "sig": "deletion-event-signature"
+}
+```
+
+#### Via REST API
+```bash
+curl -X DELETE http://localhost:3000/api/v1/events \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Nostr <base64-encoded-auth-event>" \
+  -d '{
+    "eventIds": ["event-id-1", "event-id-2"]
+  }'
+```
+
+**Response:**
+```json
+{
+  "deletedCount": 2,
+  "message": "Successfully deleted 2 event(s)"
+}
+```
+
+---
+
+## 🚀 **Getting Started**

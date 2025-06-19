@@ -13,6 +13,7 @@ import { isGenericTagName, toGenericTag } from '../../utils';
 import { EventSearchRepository } from './event-search.repository';
 import { KyselyDb } from './kysely-db';
 import { Database, EventRow } from './types';
+import { EventDeletionPlugin } from '../nostr/plugins/event-deletion.plugin';
 
 @Injectable()
 export class EventRepository extends IEventRepository {
@@ -21,6 +22,7 @@ export class EventRepository extends IEventRepository {
   constructor(
     kyselyDb: KyselyDb,
     private readonly eventSearchRepository: EventSearchRepository,
+    private readonly eventDeletionPlugin: EventDeletionPlugin,
   ) {
     super();
     this.db = kyselyDb.getDb();
@@ -133,6 +135,11 @@ export class EventRepository extends IEventRepository {
         dTagValue,
       });
 
+      // Handle deletion events (NIP-09)
+      if (event.kind === 5) {
+        await this.processDeletionEvent(event);
+      }
+
       return { isDuplicate: false };
     } catch (error) {
       if (error.code === '23505') {
@@ -222,11 +229,37 @@ export class EventRepository extends IEventRepository {
   }
 
   async deleteExpiredEvents() {
-    const result = await this.db
+    const { numDeletedRows } = await this.db
       .deleteFrom('events')
       .where('expired_at', '<', getTimestampInSeconds())
       .executeTakeFirst();
-    return parseInt(result.numDeletedRows.toString());
+    return Number(numDeletedRows);
+  }
+
+  /**
+   * Delete events by their IDs, but only if they were created by the specified author.
+   * This ensures that only the original author can delete their own events.
+   */
+  async deleteEventsByIds(eventIds: string[], authorPubkey: string): Promise<number> {
+    if (eventIds.length === 0) {
+      return 0;
+    }
+
+    const { numDeletedRows } = await this.db.transaction().execute(async (trx) => {
+      // First, delete from search index
+      for (const eventId of eventIds) {
+        await this.eventSearchRepository.deleteByEventId(eventId);
+      }
+
+      // Then delete from database, but only if the author matches
+      return await trx
+        .deleteFrom('events')
+        .where('id', 'in', eventIds)
+        .where('pubkey', '=', authorPubkey)
+        .executeTakeFirst();
+    });
+
+    return Number(numDeletedRows);
   }
 
   async destroy() {
@@ -331,5 +364,35 @@ export class EventRepository extends IEventRepository {
       }
     });
     return [...genericTagSet];
+  }
+
+  /**
+   * Process a deletion event (kind 5) by deleting the referenced events.
+   */
+  private async processDeletionEvent(deletionEvent: Event): Promise<void> {
+    try {
+      // Extract event IDs from 'e' tags
+      const eventIdsToDelete = this.eventDeletionPlugin.extractEventIdsFromTags(deletionEvent.tags);
+      
+      if (eventIdsToDelete.length === 0) {
+        console.warn(`Deletion event ${deletionEvent.id} contains no valid 'e' tags`);
+        return;
+      }
+
+      // Delete the events, but only if they were created by the same author
+      const deletedCount = await this.deleteEventsByIds(
+        eventIdsToDelete,
+        deletionEvent.pubkey
+      );
+
+      console.log(
+        `Deletion event ${deletionEvent.id} processed: ${deletedCount}/${eventIdsToDelete.length} events deleted`
+      );
+    } catch (error) {
+      console.error(
+        `Error processing deletion event ${deletionEvent.id}: ${error.message}`,
+        error
+      );
+    }
   }
 }

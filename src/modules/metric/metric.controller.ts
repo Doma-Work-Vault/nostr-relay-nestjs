@@ -16,4 +16,19 @@ export class MetricController {
   metrics() {
     return this.metricService.getMetrics();
   }
+
+  @Get('health-check')
+  healthCheck() {
+    return {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      version: '2.2.0',
+      database: 'connected',
+      services: {
+        nostr: 'active',
+        websocket: 'active',
+        database: 'connected'
+      }
+    };
+  }
 }

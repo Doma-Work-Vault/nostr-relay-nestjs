@@ -1,0 +1,33 @@
+# .gitlab-ci.yml
+# Railway deployment pipeline for Nostr Relay NestJS
+
+stages:
+  - deploy
+
+# ── Production deploy ────────────────────────────────────────────────────────
+deploy:production:
+  stage: deploy
+  image: ghcr.io/railwayapp/cli:latest
+  variables:
+    RAILWAY_TOKEN: $RAILWAY_RELAY_PROD_TOKEN
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - railway up --service=$RAILWAY_RELAY_PROD_SERVICE_ID --detach
+  environment:
+    name: production
+    url: https://relay2.bittasker.com
+
+# ── Dev: push to dev branch ───────────────────────────────────────────────────
+deploy:dev:
+  stage: deploy
+  image: ghcr.io/railwayapp/cli:latest
+  variables:
+    RAILWAY_TOKEN: $RAILWAY_RELAY_DEV_TOKEN
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+  script:
+    - railway up --service=$RAILWAY_RELAY_DEV_SERVICE_ID --environment=dev --detach
+  environment:
+    name: dev
+    url: https://relay2-dev.bittasker.com

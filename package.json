@@ -75,7 +75,7 @@
     "@types/pg": "^8.11.10",
     "@types/supertest": "^6.0.2",
     "@types/tdigest": "^0.1.4",
-    "@types/ws": "^8.5.12",
+    "@types/ws": "^8.18.2",
     "@typescript-eslint/eslint-plugin": "^8.8.0",
     "@typescript-eslint/parser": "^8.8.0",
     "eslint": "^9.11.1",

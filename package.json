@@ -42,7 +42,7 @@
     "@nostr-relay/or-guard": "^0.0.4",
     "@nostr-relay/pow-guard": "^0.0.3",
     "@nostr-relay/throttler": "^0.0.5",
-    "@nostr-relay/validator": "^0.0.36",
+    "@nostr-relay/validator": "^0.0.41",
     "@nostr-relay/wot-guard": "^0.0.11",
     "another-nestjs-ws-adapter": "^10.1.0",
     "hbs": "^4.2.0",
